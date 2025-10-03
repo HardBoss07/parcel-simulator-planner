@@ -1,7 +1,11 @@
 "use client";
 
-import {JSX, useMemo, useState} from "react";
+import {JSX, useEffect, useMemo, useRef, useState} from "react";
 import {FactoryConfig, GridCell} from "@/app/types/factory";
+import BeltIcon from "@/app/components/icons/BeltIcon";
+import Toolbar from "@/app/components/Toolbar";
+import GridCellView from "@/app/components/GridCellView";
+import {deepCloneGrid} from "@/app/utils/gridState";
 
 type Props = { config: FactoryConfig };
 
@@ -23,6 +27,136 @@ export default function FactoryGrid({config}: Props) {
         )
     );
 
+    // Responsive sizing
+    const containerRef = useRef<HTMLDivElement | null>(null);
+    const [cellSize, setCellSize] = useState<number>(32);
+
+    useEffect(() => {
+        const computeSize = () => {
+            const container = containerRef.current;
+            if (!container) return;
+            const rect = container.getBoundingClientRect();
+            const visualWidth = W + 2; // include invisible margin columns
+            const visualHeight = gridCells.length + 2; // include invisible margin rows
+
+            // Leave a small padding inside the container
+            const availableWidth = Math.max(0, rect.width - 8);
+            const availableHeight = Math.max(0, rect.height - 8);
+
+            const sizeByWidth = availableWidth / visualWidth;
+            const sizeByHeight = availableHeight / visualHeight;
+            const nextSize = Math.floor(Math.max(12, Math.min(sizeByWidth, sizeByHeight)));
+            setCellSize(nextSize);
+        };
+
+        computeSize();
+
+        const ro = new ResizeObserver(() => computeSize());
+        if (containerRef.current) {
+            ro.observe(containerRef.current);
+        }
+
+        const onResize = () => computeSize();
+        window.addEventListener("resize", onResize);
+        return () => {
+            ro.disconnect();
+            window.removeEventListener("resize", onResize);
+        };
+    }, [W, gridCells.length]);
+
+    const [isDrawing, setIsDrawing] = useState<boolean>(false);
+    const [activeTool, setActiveTool] = useState<
+        { kind: "straight" | "corner_cw" | "corner_ccw" | "loader" | "unloader"; rotation: 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315 }
+    >({ kind: "straight", rotation: 0 });
+    const [hovered, setHovered] = useState<{x: number; y: number} | null>(null);
+    const hoveredRef = useRef<{x: number; y: number} | null>(null);
+    const rotateGuardRef = useRef<{key: string; ts: number} | null>(null);
+
+    // History stack for undo
+    const [history, setHistory] = useState<GridCell[][][]>([]);
+    const pushHistoryFromCurrent = () => {
+        setHistory(h => [...h, deepCloneGrid(gridCells)]);
+    };
+    const undo = () => {
+        setHistory(h => {
+            if (h.length === 0) return h;
+            const next = h.slice(0, -1);
+            const last = h[h.length - 1];
+            setGridCells(last.map(row => row.map(cell => ({...cell, belt: cell.belt ? {...cell.belt} : undefined}))));
+            return next;
+        });
+    };
+
+    useEffect(() => {
+        const up = () => setIsDrawing(false);
+        window.addEventListener("mouseup", up);
+        return () => window.removeEventListener("mouseup", up);
+    }, []);
+
+    // Keyboard controls removed per request to avoid double-handling; using right-click to rotate instead.
+
+    const applyBeltToCell = (x: number, y: number) => {
+        if (x < 0 || y < 0 || y >= gridCells.length || x >= gridCells[0].length) return;
+        pushHistoryFromCurrent();
+        setGridCells(prev => {
+            const copy = prev.map(row => row.slice());
+            const cell = copy[y][x];
+            if (cell.type !== "blocked") {
+                cell.type = "conveyor";
+                cell.belt = { kind: activeTool.kind, rotation: activeTool.rotation };
+            }
+            return copy;
+        });
+    };
+
+    const rotateCell = (x: number, y: number) => {
+        if (x < 0 || y < 0 || y >= gridCells.length || x >= gridCells[0].length) return;
+        const now = Date.now();
+        const key = `${x},${y}`;
+        if (rotateGuardRef.current && rotateGuardRef.current.key === key && now - rotateGuardRef.current.ts < 150) {
+            return;
+        }
+        rotateGuardRef.current = { key, ts: now };
+        const cell = gridCells[y][x];
+        if (cell && cell.belt) {
+            pushHistoryFromCurrent();
+            setGridCells(prev => {
+                const copy = prev.map(row => row.slice());
+                const c = copy[y][x];
+                if (c.belt) {
+                    const next = ((c.belt.rotation + 45) % 360) as 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
+                    c.belt = { ...c.belt, rotation: next };
+                }
+                return copy;
+            });
+        } else {
+            setActiveTool(t => ({...t, rotation: ((t.rotation + 90) % 360) as 0 | 90 | 180 | 270 }));
+        }
+    };
+
+    const mirrorCell = (x: number, y: number) => {
+        if (x < 0 || y < 0 || y >= gridCells.length || x >= gridCells[0].length) return;
+        const cell = gridCells[y][x];
+        if (cell && cell.belt && (cell.belt.kind === "corner_cw" || cell.belt.kind === "corner_ccw")) {
+            pushHistoryFromCurrent();
+            setGridCells(prev => {
+                const copy = prev.map(row => row.slice());
+                const c = copy[y][x];
+                if (c.belt && (c.belt.kind === "corner_cw" || c.belt.kind === "corner_ccw")) {
+                    const nextKind = c.belt.kind === "corner_cw" ? "corner_ccw" : "corner_cw";
+                    c.belt = { ...c.belt, kind: nextKind };
+                }
+                return copy;
+            });
+        } else {
+            setActiveTool(t => {
+                if (t.kind === "corner_cw") return {...t, kind: "corner_ccw"};
+                if (t.kind === "corner_ccw") return {...t, kind: "corner_cw"};
+                return t;
+            });
+        }
+    };
+
     const renderGrid = () => {
         const elements: JSX.Element[] = [];
 
@@ -40,7 +174,13 @@ export default function FactoryGrid({config}: Props) {
                     elements.push(
                         <div
                             key={`truck-${xR}-${yR}`}
-                            className="w-8 h-8 bg-blue-600 flex items-center justify-center text-xs rounded-sm"
+                            className="bg-blue-600 flex items-center justify-center rounded-sm"
+                            style={{
+                                width: `${cellSize}px`,
+                                height: `${cellSize}px`,
+                                fontSize: `${Math.max(10, Math.round(cellSize * 0.5))}px`,
+                                lineHeight: 1,
+                            }}
                         >
                             T
                         </div>
@@ -54,7 +194,16 @@ export default function FactoryGrid({config}: Props) {
                     elements.push(
                         <div
                             key={`output-${xR}-${yR}`}
-                            className="w-8 h-8 bg-green-600 flex items-center justify-center text-[10px] rounded-sm p-1"
+                            className="bg-green-600 flex items-center justify-center rounded-sm"
+                            style={{
+                                width: `${cellSize}px`,
+                                height: `${cellSize}px`,
+                                fontSize: `${Math.max(9, Math.round(cellSize * 0.3))}px`,
+                                padding: `${Math.max(1, Math.round(cellSize * 0.1))}px`,
+                                lineHeight: 1.1,
+                                textAlign: "center",
+                                wordBreak: "break-word",
+                            }}
                             title={output.types.join(", ")}
                         >
                             {output.types.join(",")}
@@ -67,15 +216,14 @@ export default function FactoryGrid({config}: Props) {
                 if (configX >= 0 && configX < W && configY >= 0 && configY < gridCells.length) {
                     const cell: GridCell = gridCells[configY][configX];
                     elements.push(
-                        <div
+                        <GridCellView
                             key={`cell-${xR}-${yR}`}
-                            className={`w-8 h-8 rounded-sm ${
-                                cell.type === "empty"
-                                    ? "bg-gray-700"
-                                    : cell.type === "blocked"
-                                        ? "bg-red-800 opacity-60"
-                                        : "bg-yellow-500"
-                            }`}
+                            cell={cell}
+                            size={cellSize}
+                            onLeftDown={() => { setIsDrawing(true); applyBeltToCell(configX, configY); }}
+                            onRightClick={() => rotateCell(configX, configY)}
+                            onEnter={() => { const h={x: configX, y: configY}; hoveredRef.current=h; setHovered(h); if (isDrawing) applyBeltToCell(configX, configY); }}
+                            onLeave={() => { hoveredRef.current=null; setHovered(h => (h && h.x === configX && h.y === configY ? null : h)); }}
                         />
                     );
                     continue;
@@ -83,7 +231,7 @@ export default function FactoryGrid({config}: Props) {
 
                 // Invisible margin
                 elements.push(
-                    <div key={`margin-${xR}-${yR}`} className="w-8 h-8"/>
+                    <div key={`margin-${xR}-${yR}`} style={{width: `${cellSize}px`, height: `${cellSize}px`}}/>
                 );
             }
         }
@@ -92,15 +240,26 @@ export default function FactoryGrid({config}: Props) {
     };
 
     return (
-        <div>
-            <div
-                className="grid gap-0.5 bg-gray-800 p-2 rounded-lg"
-                style={{
-                    gridTemplateColumns: `repeat(${W + 2}, 32px)`,
-                    gridTemplateRows: `repeat(${gridCells.length + 2}, 32px)`,
-                }}
-            >
-                {renderGrid()}
+        <div className="w-full flex flex-col items-center gap-3">
+            <Toolbar
+                activeTool={activeTool}
+                setActiveTool={setActiveTool}
+                onClear={() => { pushHistoryFromCurrent(); setGridCells(prev => prev.map(row => row.map(c => ({...c, type: c.type === "blocked" ? "blocked" : "empty", belt: undefined })))); }}
+                onUndo={undo}
+                canUndo={history.length > 0}
+            />
+            <div ref={containerRef} style={{width: "100%", maxWidth: "min(95vw, 1200px)", height: "70vh"}}
+                 className="flex items-center justify-center">
+                <div
+                    className="grid gap-0.5 bg-gray-800 p-2 rounded-lg select-none"
+                    style={{
+                        gridTemplateColumns: `repeat(${W + 2}, ${cellSize}px)`,
+                        gridTemplateRows: `repeat(${gridCells.length + 2}, ${cellSize}px)`,
+                    }}
+                    onMouseLeave={() => setIsDrawing(false)}
+                >
+                    {renderGrid()}
+                </div>
             </div>
         </div>
     );

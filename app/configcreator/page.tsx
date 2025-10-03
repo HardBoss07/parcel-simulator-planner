@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { FactoryConfig, Truck, Output } from "@/app/types/factory";
+import {useState} from "react";
+import {FactoryConfig, Truck, Output} from "@/app/types/factory";
 
 export default function ConfigCreator() {
     const [width, setWidth] = useState(40);
@@ -25,15 +25,15 @@ export default function ConfigCreator() {
 
         if (tool === "truck") {
             if (!trucks.find((t) => t.x === x && t.y === y)) {
-                setTrucks([...trucks, { x, y }]);
+                setTrucks([...trucks, {x, y}]);
             }
         } else if (tool === "output") {
             if (!outputs.find((o) => o.x === x && o.y === y)) {
-                setOutputs([...outputs, { x, y, types: outputTypes.split(",").map((s) => s.trim()) }]);
+                setOutputs([...outputs, {x, y, types: outputTypes.split(",").map((s) => s.trim())}]);
             }
         } else if (tool === "blocked") {
             if (!blocked.find((b) => b.x === x && b.y === y)) {
-                setBlocked([...blocked, { x, y }]);
+                setBlocked([...blocked, {x, y}]);
             }
         }
     };
@@ -45,8 +45,8 @@ export default function ConfigCreator() {
     };
 
     const saveJSON = () => {
-        const config: FactoryConfig = { width, height, trucks, outputs, blocked };
-        const blob = new Blob([JSON.stringify(config, null, 2)], { type: "application/json" });
+        const config: FactoryConfig = {width, height, trucks, outputs, blocked};
+        const blob = new Blob([JSON.stringify(config, null, 2)], {type: "application/json"});
         const url = URL.createObjectURL(blob);
         const a = document.createElement("a");
         a.href = url;

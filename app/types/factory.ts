@@ -5,6 +5,10 @@ export type GridCell = {
     x: number;
     y: number;
     type: "empty" | "conveyor" | "blocked";
+    belt?: {
+        kind: "straight" | "corner_cw" | "corner_ccw" | "loader" | "unloader";
+        rotation: 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
+    };
 };
 
 export type FactoryConfig = {

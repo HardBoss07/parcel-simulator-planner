@@ -1,0 +1,48 @@
+"use client";
+
+import React from "react";
+
+type ToolKind = "straight" | "corner_cw" | "corner_ccw" | "loader" | "unloader";
+type Rotation = 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
+
+type Props = {
+    activeTool: { kind: ToolKind; rotation: Rotation };
+    setActiveTool: (updater: (t: { kind: ToolKind; rotation: Rotation }) => { kind: ToolKind; rotation: Rotation }) => void;
+    onClear: () => void;
+    onUndo: () => void;
+    canUndo: boolean;
+};
+
+export default function Toolbar({ activeTool, setActiveTool, onClear, onUndo, canUndo }: Props) {
+    const btn = (isActive: boolean) => `px-3 py-1 rounded border ${isActive ? "bg-blue-600 border-blue-500" : "bg-gray-800 border-gray-700"}`;
+
+    return (
+        <div className="flex items-center gap-2 flex-wrap">
+            <button className={btn(activeTool.kind === "straight")} onClick={() => setActiveTool(t => ({...t, kind: "straight"}))}>Straight</button>
+            <button className={btn(activeTool.kind === "corner_cw")} onClick={() => setActiveTool(t => ({...t, kind: "corner_cw"}))}>Corner CW</button>
+            <button className={btn(activeTool.kind === "corner_ccw")} onClick={() => setActiveTool(t => ({...t, kind: "corner_ccw"}))}>Corner CCW</button>
+            <button className={btn(activeTool.kind === "loader")} onClick={() => setActiveTool(t => ({...t, kind: "loader"}))}>Loader</button>
+            <button className={btn(activeTool.kind === "unloader")} onClick={() => setActiveTool(t => ({...t, kind: "unloader"}))}>Unloader</button>
+
+            <div className="mx-2 w-px h-5 bg-gray-700"/>
+
+            <button
+                className="px-3 py-1 rounded border bg-gray-800 border-gray-700"
+                onClick={() => setActiveTool(t => ({...t, rotation: ((t.rotation + 90) % 360) as Rotation }))}
+                title="Rotate tool"
+            >Rotate 90°</button>
+            <button
+                className="px-3 py-1 rounded border bg-gray-800 border-gray-700"
+                onClick={() => setActiveTool(t => (t.kind === "corner_cw" ? {...t, kind: "corner_ccw"} : t.kind === "corner_ccw" ? {...t, kind: "corner_cw"} : t))}
+                title="Mirror tool"
+            >Mirror</button>
+
+            <div className="mx-2 w-px h-5 bg-gray-700"/>
+
+            <button className="px-3 py-1 rounded border bg-red-700 border-red-600" onClick={onClear}>Clear</button>
+            <button className="px-3 py-1 rounded border bg-gray-800 border-gray-700" onClick={onUndo} disabled={!canUndo}>Undo</button>
+        </div>
+    );
+}
+
+
