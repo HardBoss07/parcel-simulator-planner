@@ -1,15 +1,42 @@
 "use client";
 
-import {JSX, useEffect, useMemo, useRef, useState} from "react";
+import {JSX, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle} from "react";
 import {FactoryConfig, GridCell, FactoryPlan} from "@/app/types/factory";
 import BeltIcon from "@/app/components/icons/BeltIcon";
-import Toolbar from "@/app/components/Toolbar";
 import GridCellView from "@/app/components/GridCellView";
 import {deepCloneGrid} from "@/app/utils/gridState";
+import {getAllScannerGlows, GlowEffect} from "@/app/utils/scanner";
 
-type Props = { config: FactoryConfig };
+type ToolKind =
+    "straight"
+    | "corner_cw"
+    | "corner_ccw"
+    | "loader"
+    | "unloader"
+    | "sticker_checker"
+    | "weight_scanner"
+    | "serial_scanner"
+    | "country_scanner";
+type Rotation = 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
 
-export default function FactoryGrid({config}: Props) {
+type Props = {
+    config: FactoryConfig;
+    activeTool: { kind: ToolKind; rotation: Rotation };
+    setActiveTool: (updater: (t: { kind: ToolKind; rotation: Rotation }) => {
+        kind: ToolKind;
+        rotation: Rotation
+    }) => void;
+};
+
+export interface FactoryGridRef {
+    onClear: () => void;
+    onUndo: () => void;
+    canUndo: boolean;
+    onSaveJSON: () => void;
+    onImportJSON: () => void;
+}
+
+const FactoryGrid = forwardRef<FactoryGridRef, Props>(({config, activeTool, setActiveTool}, ref) => {
     const W = config.width;
     const H = config.height;
 
@@ -65,15 +92,12 @@ export default function FactoryGrid({config}: Props) {
     }, [W, gridCells.length]);
 
     const [isDrawing, setIsDrawing] = useState<boolean>(false);
-    const [activeTool, setActiveTool] = useState<
-        {
-            kind: "straight" | "corner_cw" | "corner_ccw" | "loader" | "unloader";
-            rotation: 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315
-        }
-    >({kind: "straight", rotation: 0});
     const [hovered, setHovered] = useState<{ x: number; y: number } | null>(null);
     const hoveredRef = useRef<{ x: number; y: number } | null>(null);
     const rotateGuardRef = useRef<{ key: string; ts: number } | null>(null);
+
+    // Calculate glow effects for all scanners
+    const scannerGlows = useMemo(() => getAllScannerGlows(gridCells), [gridCells]);
 
     // History stack for undo
     const [history, setHistory] = useState<GridCell[][][]>([]);
@@ -160,6 +184,23 @@ export default function FactoryGrid({config}: Props) {
         input.click();
     };
 
+    // Expose handlers to parent component
+    useImperativeHandle(ref, () => ({
+        onClear: () => {
+            pushHistoryFromCurrent();
+            setGridCells(prev => prev.map(row => row.map(c => ({
+                ...c,
+                type: c.type === "blocked" ? "blocked" : "empty",
+                belt: undefined,
+                scanner: undefined
+            }))));
+        },
+        onUndo: undo,
+        canUndo: history.length > 0,
+        onSaveJSON: saveJSON,
+        onImportJSON: importJSON
+    }), [history.length, gridCells]);
+
     useEffect(() => {
         const up = () => setIsDrawing(false);
         window.addEventListener("mouseup", up);
@@ -175,8 +216,16 @@ export default function FactoryGrid({config}: Props) {
             const copy = prev.map(row => row.slice());
             const cell = copy[y][x];
             if (cell.type !== "blocked") {
-                cell.type = "conveyor";
-                cell.belt = {kind: activeTool.kind, rotation: activeTool.rotation};
+                if (activeTool.kind === "sticker_checker" || activeTool.kind === "weight_scanner" ||
+                    activeTool.kind === "serial_scanner" || activeTool.kind === "country_scanner") {
+                    cell.type = "scanner";
+                    cell.scanner = {kind: activeTool.kind, rotation: activeTool.rotation};
+                    cell.belt = undefined; // Clear any existing belt
+                } else {
+                    cell.type = "conveyor";
+                    cell.belt = {kind: activeTool.kind, rotation: activeTool.rotation};
+                    cell.scanner = undefined; // Clear any existing scanner
+                }
             }
             return copy;
         });
@@ -191,7 +240,7 @@ export default function FactoryGrid({config}: Props) {
         }
         rotateGuardRef.current = {key, ts: now};
         const cell = gridCells[y][x];
-        if (cell && cell.belt) {
+        if (cell && (cell.belt || cell.scanner)) {
             pushHistoryFromCurrent();
             setGridCells(prev => {
                 const copy = prev.map(row => row.slice());
@@ -199,6 +248,9 @@ export default function FactoryGrid({config}: Props) {
                 if (c.belt) {
                     const next = ((c.belt.rotation + 45) % 360) as 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
                     c.belt = {...c.belt, rotation: next};
+                } else if (c.scanner) {
+                    const next = ((c.scanner.rotation + 45) % 360) as 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
+                    c.scanner = {...c.scanner, rotation: next};
                 }
                 return copy;
             });
@@ -293,6 +345,7 @@ export default function FactoryGrid({config}: Props) {
                             key={`cell-${xR}-${yR}`}
                             cell={cell}
                             size={cellSize}
+                            glowEffects={scannerGlows}
                             onLeftDown={() => {
                                 setIsDrawing(true);
                                 applyBeltToCell(configX, configY);
@@ -325,22 +378,6 @@ export default function FactoryGrid({config}: Props) {
 
     return (
         <div className="w-full flex flex-col items-center gap-3">
-            <Toolbar
-                activeTool={activeTool}
-                setActiveTool={setActiveTool}
-                onClear={() => {
-                    pushHistoryFromCurrent();
-                    setGridCells(prev => prev.map(row => row.map(c => ({
-                        ...c,
-                        type: c.type === "blocked" ? "blocked" : "empty",
-                        belt: undefined
-                    }))));
-                }}
-                onUndo={undo}
-                canUndo={history.length > 0}
-                onSaveJSON={saveJSON}
-                onImportJSON={importJSON}
-            />
             <div ref={containerRef} style={{width: "100%", maxWidth: "min(95vw, 1200px)", height: "70vh"}}
                  className="flex items-center justify-center">
                 <div
@@ -356,4 +393,8 @@ export default function FactoryGrid({config}: Props) {
             </div>
         </div>
     );
-}
+});
+
+FactoryGrid.displayName = 'FactoryGrid';
+
+export default FactoryGrid;
