@@ -18,3 +18,8 @@ export type FactoryConfig = {
     outputs: Output[];
     blocked?: { x: number; y: number }[];
 };
+
+export type FactoryPlan = {
+    config: FactoryConfig;
+    cells: GridCell[];
+}

@@ -28,7 +28,7 @@ function mapKindToSrc(kind: BeltKind): string {
     }
 }
 
-export default function BeltIcon({ kind, rotation = 0, size, className }: Props) {
+export default function BeltIcon({kind, rotation = 0, size, className}: Props) {
     const src = mapKindToSrc(kind);
     return (
         <img

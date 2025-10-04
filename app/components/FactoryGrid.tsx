@@ -1,7 +1,7 @@
 "use client";
 
 import {JSX, useEffect, useMemo, useRef, useState} from "react";
-import {FactoryConfig, GridCell} from "@/app/types/factory";
+import {FactoryConfig, GridCell, FactoryPlan} from "@/app/types/factory";
 import BeltIcon from "@/app/components/icons/BeltIcon";
 import Toolbar from "@/app/components/Toolbar";
 import GridCellView from "@/app/components/GridCellView";
@@ -66,11 +66,14 @@ export default function FactoryGrid({config}: Props) {
 
     const [isDrawing, setIsDrawing] = useState<boolean>(false);
     const [activeTool, setActiveTool] = useState<
-        { kind: "straight" | "corner_cw" | "corner_ccw" | "loader" | "unloader"; rotation: 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315 }
-    >({ kind: "straight", rotation: 0 });
-    const [hovered, setHovered] = useState<{x: number; y: number} | null>(null);
-    const hoveredRef = useRef<{x: number; y: number} | null>(null);
-    const rotateGuardRef = useRef<{key: string; ts: number} | null>(null);
+        {
+            kind: "straight" | "corner_cw" | "corner_ccw" | "loader" | "unloader";
+            rotation: 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315
+        }
+    >({kind: "straight", rotation: 0});
+    const [hovered, setHovered] = useState<{ x: number; y: number } | null>(null);
+    const hoveredRef = useRef<{ x: number; y: number } | null>(null);
+    const rotateGuardRef = useRef<{ key: string; ts: number } | null>(null);
 
     // History stack for undo
     const [history, setHistory] = useState<GridCell[][][]>([]);
@@ -85,6 +88,76 @@ export default function FactoryGrid({config}: Props) {
             setGridCells(last.map(row => row.map(cell => ({...cell, belt: cell.belt ? {...cell.belt} : undefined}))));
             return next;
         });
+    };
+
+    const saveJSON = () => {
+        const factoryPlan: FactoryPlan = {
+            config,
+            cells: gridCells.flat()
+        };
+
+        const jsonString = JSON.stringify(factoryPlan, null, 2);
+        const blob = new Blob([jsonString], {type: 'application/json'});
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = 'factory-plan.json';
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    };
+
+    const importJSON = () => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = '.json';
+
+        input.onchange = (e) => {
+            const file = (e.target as HTMLInputElement).files?.[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                try {
+                    const content = e.target?.result as string;
+                    const factoryPlan: FactoryPlan = JSON.parse(content);
+
+                    // Validate the imported data
+                    if (!factoryPlan.config || !factoryPlan.cells) {
+                        alert('Invalid factory plan format');
+                        return;
+                    }
+
+                    // Convert flat cells array back to 2D grid
+                    const newGridCells: GridCell[][] = [];
+                    for (let y = 0; y < config.height; y++) {
+                        newGridCells[y] = [];
+                        for (let x = 0; x < config.width; x++) {
+                            const cell = factoryPlan.cells.find(c => c.x === x && c.y === y);
+                            if (cell) {
+                                newGridCells[y][x] = cell;
+                            } else {
+                                newGridCells[y][x] = {
+                                    x,
+                                    y,
+                                    type: config.blocked?.find((b) => b.x === x && b.y === y) ? "blocked" : "empty"
+                                };
+                            }
+                        }
+                    }
+
+                    pushHistoryFromCurrent();
+                    setGridCells(newGridCells);
+                } catch (error) {
+                    alert('Error parsing JSON file: ' + (error as Error).message);
+                }
+            };
+            reader.readAsText(file);
+        };
+
+        input.click();
     };
 
     useEffect(() => {
@@ -103,7 +176,7 @@ export default function FactoryGrid({config}: Props) {
             const cell = copy[y][x];
             if (cell.type !== "blocked") {
                 cell.type = "conveyor";
-                cell.belt = { kind: activeTool.kind, rotation: activeTool.rotation };
+                cell.belt = {kind: activeTool.kind, rotation: activeTool.rotation};
             }
             return copy;
         });
@@ -116,7 +189,7 @@ export default function FactoryGrid({config}: Props) {
         if (rotateGuardRef.current && rotateGuardRef.current.key === key && now - rotateGuardRef.current.ts < 150) {
             return;
         }
-        rotateGuardRef.current = { key, ts: now };
+        rotateGuardRef.current = {key, ts: now};
         const cell = gridCells[y][x];
         if (cell && cell.belt) {
             pushHistoryFromCurrent();
@@ -125,12 +198,12 @@ export default function FactoryGrid({config}: Props) {
                 const c = copy[y][x];
                 if (c.belt) {
                     const next = ((c.belt.rotation + 45) % 360) as 0 | 45 | 90 | 135 | 180 | 225 | 270 | 315;
-                    c.belt = { ...c.belt, rotation: next };
+                    c.belt = {...c.belt, rotation: next};
                 }
                 return copy;
             });
         } else {
-            setActiveTool(t => ({...t, rotation: ((t.rotation + 90) % 360) as 0 | 90 | 180 | 270 }));
+            setActiveTool(t => ({...t, rotation: ((t.rotation + 90) % 360) as 0 | 90 | 180 | 270}));
         }
     };
 
@@ -144,7 +217,7 @@ export default function FactoryGrid({config}: Props) {
                 const c = copy[y][x];
                 if (c.belt && (c.belt.kind === "corner_cw" || c.belt.kind === "corner_ccw")) {
                     const nextKind = c.belt.kind === "corner_cw" ? "corner_ccw" : "corner_cw";
-                    c.belt = { ...c.belt, kind: nextKind };
+                    c.belt = {...c.belt, kind: nextKind};
                 }
                 return copy;
             });
@@ -220,10 +293,21 @@ export default function FactoryGrid({config}: Props) {
                             key={`cell-${xR}-${yR}`}
                             cell={cell}
                             size={cellSize}
-                            onLeftDown={() => { setIsDrawing(true); applyBeltToCell(configX, configY); }}
+                            onLeftDown={() => {
+                                setIsDrawing(true);
+                                applyBeltToCell(configX, configY);
+                            }}
                             onRightClick={() => rotateCell(configX, configY)}
-                            onEnter={() => { const h={x: configX, y: configY}; hoveredRef.current=h; setHovered(h); if (isDrawing) applyBeltToCell(configX, configY); }}
-                            onLeave={() => { hoveredRef.current=null; setHovered(h => (h && h.x === configX && h.y === configY ? null : h)); }}
+                            onEnter={() => {
+                                const h = {x: configX, y: configY};
+                                hoveredRef.current = h;
+                                setHovered(h);
+                                if (isDrawing) applyBeltToCell(configX, configY);
+                            }}
+                            onLeave={() => {
+                                hoveredRef.current = null;
+                                setHovered(h => (h && h.x === configX && h.y === configY ? null : h));
+                            }}
                         />
                     );
                     continue;
@@ -244,9 +328,18 @@ export default function FactoryGrid({config}: Props) {
             <Toolbar
                 activeTool={activeTool}
                 setActiveTool={setActiveTool}
-                onClear={() => { pushHistoryFromCurrent(); setGridCells(prev => prev.map(row => row.map(c => ({...c, type: c.type === "blocked" ? "blocked" : "empty", belt: undefined })))); }}
+                onClear={() => {
+                    pushHistoryFromCurrent();
+                    setGridCells(prev => prev.map(row => row.map(c => ({
+                        ...c,
+                        type: c.type === "blocked" ? "blocked" : "empty",
+                        belt: undefined
+                    }))));
+                }}
                 onUndo={undo}
                 canUndo={history.length > 0}
+                onSaveJSON={saveJSON}
+                onImportJSON={importJSON}
             />
             <div ref={containerRef} style={{width: "100%", maxWidth: "min(95vw, 1200px)", height: "70vh"}}
                  className="flex items-center justify-center">
