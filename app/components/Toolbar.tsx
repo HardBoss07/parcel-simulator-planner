@@ -25,6 +25,8 @@ type Props = {
     canUndo: boolean;
     onSaveJSON: () => void;
     onImportJSON: () => void;
+    isEditMode: boolean;
+    onToggleEditMode: () => void;
 };
 
 export default function Toolbar({
@@ -34,7 +36,9 @@ export default function Toolbar({
                                     onUndo,
                                     canUndo,
                                     onSaveJSON,
-                                    onImportJSON
+                                    onImportJSON,
+                                    isEditMode,
+                                    onToggleEditMode
                                 }: Props) {
     const btn = (isActive: boolean) => `px-3 py-1 rounded border ${isActive ? "bg-blue-600 border-blue-500" : "bg-gray-800 border-gray-700"}`;
 
@@ -45,6 +49,13 @@ export default function Toolbar({
             </button>
             <button className="px-3 py-1 rounded border bg-blue-600 border-blue-500 text-white"
                     onClick={onImportJSON}>Import JSON
+            </button>
+
+            <div className="mx-2 w-px h-5 bg-gray-700"/>
+
+            <button className={`px-3 py-1 rounded border text-white ${isEditMode ? "bg-orange-600 border-orange-500" : "bg-purple-600 border-purple-500"}`}
+                    onClick={onToggleEditMode}>
+                {isEditMode ? "Exit Edit Mode" : "Enter Edit Mode"}
             </button>
 
             <div className="mx-2 w-px h-5 bg-gray-700"/>

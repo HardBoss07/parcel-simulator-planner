@@ -13,6 +13,8 @@ type Props = {
     onRightClick: () => void;
     onEnter: () => void;
     onLeave: () => void;
+    isEditMode?: boolean;
+    isCurrentEditPosition?: boolean;
 };
 
 export default function GridCellView({
@@ -22,7 +24,9 @@ export default function GridCellView({
                                          onLeftDown,
                                          onRightClick,
                                          onEnter,
-                                         onLeave
+                                         onLeave,
+                                         isEditMode = false,
+                                         isCurrentEditPosition = false
                                      }: Props) {
     const bg = cell.type === "empty" ? "bg-gray-700" :
         cell.type === "blocked" ? "bg-red-800 opacity-60" :
@@ -54,10 +58,13 @@ export default function GridCellView({
 
     // Add grayish border for cells with belts
     const beltBorderClass = cell.belt ? "border border-gray-400" : "";
+    
+    // Add white border for current edit position
+    const editModeBorderClass = isEditMode && isCurrentEditPosition ? "border-2 border-white" : "";
 
     return (
         <div
-            className={`relative rounded-sm ${bg} ${glowClass} ${beltBorderClass}`}
+            className={`relative rounded-sm ${bg} ${glowClass} ${beltBorderClass} ${editModeBorderClass}`}
             style={{width: `${size}px`, height: `${size}px`}}
             onMouseDown={(e) => {
                 if (e.button === 0) onLeftDown();

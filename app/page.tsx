@@ -27,6 +27,10 @@ export default function Home() {
         rotation: 0
     });
 
+    // Edit mode state
+    const [isEditMode, setIsEditMode] = useState<boolean>(false);
+    const [editPosition, setEditPosition] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
     const factoryGridRef = useRef<FactoryGridRef>(null);
 
     return (
@@ -46,6 +50,8 @@ export default function Home() {
                         canUndo={factoryGridRef.current?.canUndo || false}
                         onSaveJSON={() => factoryGridRef.current?.onSaveJSON()}
                         onImportJSON={() => factoryGridRef.current?.onImportJSON()}
+                        isEditMode={isEditMode}
+                        onToggleEditMode={() => setIsEditMode(!isEditMode)}
                     />
                 </div>
                 <div className="flex-1 flex justify-center">
@@ -54,6 +60,9 @@ export default function Home() {
                         config={tierFiveConfig}
                         activeTool={activeTool}
                         setActiveTool={setActiveTool}
+                        isEditMode={isEditMode}
+                        editPosition={editPosition}
+                        setEditPosition={setEditPosition}
                     />
                 </div>
             </main>

@@ -26,6 +26,9 @@ type Props = {
         kind: ToolKind;
         rotation: Rotation
     }) => void;
+    isEditMode: boolean;
+    editPosition: { x: number; y: number };
+    setEditPosition: (position: { x: number; y: number }) => void;
 };
 
 export interface FactoryGridRef {
@@ -36,7 +39,7 @@ export interface FactoryGridRef {
     onImportJSON: () => void;
 }
 
-const FactoryGrid = forwardRef<FactoryGridRef, Props>(({config, activeTool, setActiveTool}, ref) => {
+const FactoryGrid = forwardRef<FactoryGridRef, Props>(({config, activeTool, setActiveTool, isEditMode, editPosition, setEditPosition}, ref) => {
     const W = config.width;
     const H = config.height;
 
@@ -207,10 +210,55 @@ const FactoryGrid = forwardRef<FactoryGridRef, Props>(({config, activeTool, setA
         return () => window.removeEventListener("mouseup", up);
     }, []);
 
+    // Arrow key navigation for edit mode
+    useEffect(() => {
+        if (!isEditMode) return;
+
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (!isEditMode) return;
+
+            switch (e.key) {
+                case 'ArrowUp':
+                    e.preventDefault();
+                    setEditPosition(prev => ({
+                        x: prev.x,
+                        y: Math.min(H - 1, prev.y + 1)
+                    }));
+                    break;
+                case 'ArrowDown':
+                    e.preventDefault();
+                    setEditPosition(prev => ({
+                        x: prev.x,
+                        y: Math.max(0, prev.y - 1)
+                    }));
+                    break;
+                case 'ArrowLeft':
+                    e.preventDefault();
+                    setEditPosition(prev => ({
+                        x: Math.max(0, prev.x - 1),
+                        y: prev.y
+                    }));
+                    break;
+                case 'ArrowRight':
+                    e.preventDefault();
+                    setEditPosition(prev => ({
+                        x: Math.min(W - 1, prev.x + 1),
+                        y: prev.y
+                    }));
+                    break;
+            }
+        };
+
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isEditMode, W, H]);
+
     // Keyboard controls removed per request to avoid double-handling; using right-click to rotate instead.
 
     const applyBeltToCell = (x: number, y: number) => {
         if (x < 0 || y < 0 || y >= gridCells.length || x >= gridCells[0].length) return;
+        if (isEditMode) return; // Prevent placement in edit mode
+
         pushHistoryFromCurrent();
         setGridCells(prev => {
             const copy = prev.map(row => row.slice());
@@ -361,6 +409,8 @@ const FactoryGrid = forwardRef<FactoryGridRef, Props>(({config, activeTool, setA
                                 hoveredRef.current = null;
                                 setHovered(h => (h && h.x === configX && h.y === configY ? null : h));
                             }}
+                            isEditMode={isEditMode}
+                            isCurrentEditPosition={isEditMode && editPosition.x === configX && editPosition.y === configY}
                         />
                     );
                     continue;
