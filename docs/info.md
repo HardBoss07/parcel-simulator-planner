@@ -5,11 +5,6 @@
 **Dimensions:**
 20, 40 (height, width)
 
-**Corners:**
-- 0, 0: Bottom Left
-- 20, 0: Top Left
-- 0, 40: Bottom Right
-- 20, 40: Top Right
 
 **Blocked Area / Cutout**
 10x10 Cutout from bottom Right Corner extruding inside the factory
