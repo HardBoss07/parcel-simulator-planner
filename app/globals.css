@@ -1,2 +1,9 @@
 @import "tailwindcss";
 
+body {
+    @apply bg-[#333] m-4 ml-5
+}
+
+h1 {
+    @apply text-3xl font-bold text-white;
+}
